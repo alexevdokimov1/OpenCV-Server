@@ -5,14 +5,22 @@
 #include <ws2tcpip.h>
 #pragma comment(lib, "Ws2_32.lib")
 
+struct BufferImage {
+    int bufferSize;
+    char* buffer;
+    int width;
+    int height;
+};
+
 int main() {
+
+    std::cout << "Build " << __DATE__ << "  " << __TIME__ << "\n";
     WSADATA wsaData;
     SOCKET server_socket = INVALID_SOCKET;
     SOCKET client_socket = INVALID_SOCKET;
     struct sockaddr_in server_addr, client_addr;
     int client_addr_len = sizeof(client_addr);
-    long long int value;
-    int messageSize = sizeof(long long int);
+    int result;
     char* buffer;
 
     // Initialize Winsock
@@ -61,36 +69,63 @@ int main() {
     }
 
     while (true) {
+        try {
             std::cout << "Waiting for connection...\n";
 
             // Accept client connection
             client_socket = accept(server_socket, (SOCKADDR*)&client_addr, &client_addr_len);
             if (client_socket == INVALID_SOCKET) {
-                std::cerr << "Accept failed: " << WSAGetLastError() << std::endl;
-                closesocket(server_socket);
-                WSACleanup();
-                return 1;
+                throw std::runtime_error("Accept failed: " + WSAGetLastError());
             }
 
             std::cout << "Client connected!" << std::endl;
 
-            buffer = new char[messageSize];
-            
+            BufferImage data;
+
             // Receive message
-            int result = recv(client_socket, buffer, messageSize, 0);
-            if (result > 0) {
-                std::memcpy(&value, buffer, messageSize);
-                std::cout << "Received: " << value << std::endl;
+            buffer = new char[4];
+            //get size
+            result = recv(client_socket, buffer, 4, 0);
+            if (result <= 0) throw std::runtime_error("Error during receiving bytes count");
+            std::memcpy(&data.bufferSize, buffer, 4);
 
-                value *= 100;
+            //get width
+            result = recv(client_socket, buffer, 4, 0);
+            if (result <= 0) throw std::runtime_error("Error during receiving width");
+            std::memcpy(&data.width, buffer, 4);
 
-                delete[] buffer;
-                buffer = new char[messageSize];
-                std::memcpy(buffer, &value, messageSize);
-                send(client_socket, buffer, messageSize, 0);
-            }
+            //get height
+            result = recv(client_socket, buffer, 4, 0);
+            if (result <= 0) throw std::runtime_error("Error during receiving height");
+            std::memcpy(&data.height, buffer, 4);
+
             delete[] buffer;
-            closesocket(client_socket);
+
+            data.buffer = new char[data.bufferSize];
+            result = recv(client_socket, data.buffer, data.bufferSize, 0);
+            if (result <= 0) throw std::runtime_error("Error during receiving bytes");
+            std::cout << "Recived " << data.bufferSize << " bytes with " << data.width << "x" << data.height << "\n";
+
+            //some actions
+
+            buffer = new char[4];
+            std::memcpy(buffer, &data.bufferSize, 4);
+            send(client_socket, buffer, 4, 0);
+
+            std::memcpy(buffer, &data.width, 4);
+            send(client_socket, buffer, 4, 0);
+
+            std::memcpy(buffer, &data.height, 4);
+            send(client_socket, buffer, 4, 0);
+
+            delete[] buffer;
+            send(client_socket, data.buffer, data.bufferSize, 0);
+            
+        }
+        catch (const std::exception& ex) {
+            std::cout << ex.what();
+        }
+        closesocket(client_socket);
     }
 
     // Cleanup
