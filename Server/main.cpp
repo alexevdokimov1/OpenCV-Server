@@ -3,10 +3,11 @@
 #include <iostream>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#pragma comment(lib, "Ws2_32.lib")
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgcodecs.hpp>
+
+#pragma comment(lib, "Ws2_32.lib")
 
 int main() {
 
@@ -95,16 +96,16 @@ int main() {
 
             delete[] buffer;
 
-            int rowSize = width * channels * sizeof(uchar);
             cv::Mat in(height, width, CV_8UC(channels));
 
+            int rowSize = width * channels * sizeof(uchar);
+            buffer = new char[rowSize];
             for (int row = 0; row < height; row++) {
-                buffer = new char[rowSize];
                 result = recv(client_socket, buffer, rowSize, 0);
                 if (result <= 0) throw std::runtime_error("Error during receiving matrix");
                 memcpy(in.ptr(row), buffer, rowSize);
-                delete[] buffer;
             }
+            delete[] buffer;
             
             std::cout << "Recived " << width << "x" << height << " image with " << channels << " channels\n";
 
@@ -113,7 +114,6 @@ int main() {
             cvtColor(in, in, cv::COLOR_RGB2GRAY);
 
             //send
-
             width = in.cols;
             height = in.rows;
             channels = in.channels();
@@ -132,12 +132,12 @@ int main() {
             delete[] buffer;
 
             rowSize = width * channels * sizeof(uchar);
+            buffer = new char[rowSize];
             for (int row = 0; row < height; row++) {
-                buffer = new char[rowSize];
                 std::memcpy(buffer, in.ptr(row), rowSize);
                 send(client_socket, buffer, rowSize, 0);
-                delete[] buffer;
             }
+            delete[] buffer;
         }
         catch (const std::exception& ex) {
             std::cout << ex.what() << "\n";

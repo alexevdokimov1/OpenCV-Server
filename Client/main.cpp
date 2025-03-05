@@ -90,12 +90,12 @@ int main() {
             delete[] buffer;
 
             int rowSize = width * channels * sizeof(uchar);
+            buffer = new char[rowSize];
             for (int row = 0; row < height; row++) {
-                buffer = new char[rowSize];
                 std::memcpy(buffer, target.ptr(row), rowSize);
                 send(client_socket, buffer, rowSize, 0);
-                delete[] buffer;
             }
+            delete[] buffer;
 
             std::cout << "Message sent" << std::endl;
             // Receive response
@@ -116,26 +116,32 @@ int main() {
 
             delete[] buffer;
 
-            rowSize = width * channels * sizeof(uchar);
             cv::Mat out(height, width, CV_8UC(channels));
 
+            rowSize = width * channels * sizeof(uchar);
+            buffer = new char[rowSize];
             for (int row = 0; row < height; row++) {
-                buffer = new char[rowSize];
+               
                 result = recv(client_socket, buffer, rowSize, 0);
                 if (result <= 0) throw std::runtime_error("Error during receiving matrix");
                 memcpy(out.ptr(row), buffer, rowSize);
             }
             delete[] buffer;
-            std::string fileName = "images/Out" + std::to_string(imageIndex) + ".jpg";
-            cv::imwrite(fileName, out);
+
+            cv::pyrUp(out, out, cv::Size(out.cols * 2, out.rows * 2));
+
+            std::string fileName = "images/Capture" + std::to_string(imageIndex) + ".jpg";
+            //cv::imwrite(fileName, out);
+            cv::imshow("Imge", out);
+            cv::waitKey(1);
             imageIndex++;
             closesocket(client_socket);
         }
         catch (const std::exception& ex) {
             std::cout << ex.what() << "\n";
         }
-        //system("pause");
     }    
+    cam.release();
     WSACleanup();
     return 0;
 }
