@@ -5,23 +5,22 @@
 #include <ws2tcpip.h>
 #pragma comment(lib, "Ws2_32.lib")
 
-struct BufferImage {
-    int bufferSize;
-    char* buffer;
-    int width;
-    int height;
-};
+#include <opencv2/opencv.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 int main() {
 
     std::cout << "Build " << __DATE__ << "  " << __TIME__ << "\n";
+
     WSADATA wsaData;
     SOCKET server_socket = INVALID_SOCKET;
     SOCKET client_socket = INVALID_SOCKET;
     struct sockaddr_in server_addr, client_addr;
     int client_addr_len = sizeof(client_addr);
+
     int result;
     char* buffer;
+    int width, height, channels;
 
     // Initialize Winsock
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -80,50 +79,68 @@ int main() {
 
             std::cout << "Client connected!" << std::endl;
 
-            BufferImage data;
-
-            // Receive message
             buffer = new char[4];
-            //get size
-            result = recv(client_socket, buffer, 4, 0);
-            if (result <= 0) throw std::runtime_error("Error during receiving bytes count");
-            std::memcpy(&data.bufferSize, buffer, 4);
-
-            //get width
+            // receive width
             result = recv(client_socket, buffer, 4, 0);
             if (result <= 0) throw std::runtime_error("Error during receiving width");
-            std::memcpy(&data.width, buffer, 4);
-
-            //get height
+            std::memcpy(&width, buffer, 4);
+            // receive height
             result = recv(client_socket, buffer, 4, 0);
             if (result <= 0) throw std::runtime_error("Error during receiving height");
-            std::memcpy(&data.height, buffer, 4);
+            std::memcpy(&height, buffer, 4);
+            // receive height
+            result = recv(client_socket, buffer, 4, 0);
+            if (result <= 0) throw std::runtime_error("Error during receiving channels");
+            std::memcpy(&channels, buffer, 4);
 
             delete[] buffer;
 
-            data.buffer = new char[data.bufferSize];
-            result = recv(client_socket, data.buffer, data.bufferSize, 0);
-            if (result <= 0) throw std::runtime_error("Error during receiving bytes");
-            std::cout << "Recived " << data.bufferSize << " bytes with " << data.width << "x" << data.height << "\n";
+            int rowSize = width * channels * sizeof(uchar);
+            cv::Mat in(height, width, CV_8UC(channels));
 
-            //some actions
+            for (int row = 0; row < height; row++) {
+                buffer = new char[rowSize];
+                result = recv(client_socket, buffer, rowSize, 0);
+                if (result <= 0) throw std::runtime_error("Error during receiving matrix");
+                memcpy(in.ptr(row), buffer, rowSize);
+                delete[] buffer;
+            }
+            
+            std::cout << "Recived " << width << "x" << height << " image with " << channels << " channels\n";
+
+            //actions
+
+            cvtColor(in, in, cv::COLOR_RGB2GRAY);
+
+            //send
+
+            width = in.cols;
+            height = in.rows;
+            channels = in.channels();
 
             buffer = new char[4];
-            std::memcpy(buffer, &data.bufferSize, 4);
+            //send width
+            std::memcpy(buffer, &width, 4);
             send(client_socket, buffer, 4, 0);
-
-            std::memcpy(buffer, &data.width, 4);
+            //send height
+            std::memcpy(buffer, &height, 4);
             send(client_socket, buffer, 4, 0);
-
-            std::memcpy(buffer, &data.height, 4);
+            //send channels
+            std::memcpy(buffer, &channels, 4);
             send(client_socket, buffer, 4, 0);
-
+            //send bytes
             delete[] buffer;
-            send(client_socket, data.buffer, data.bufferSize, 0);
-            
+
+            rowSize = width * channels * sizeof(uchar);
+            for (int row = 0; row < height; row++) {
+                buffer = new char[rowSize];
+                std::memcpy(buffer, in.ptr(row), rowSize);
+                send(client_socket, buffer, rowSize, 0);
+                delete[] buffer;
+            }
         }
         catch (const std::exception& ex) {
-            std::cout << ex.what();
+            std::cout << ex.what() << "\n";
         }
         closesocket(client_socket);
     }
