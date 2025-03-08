@@ -46,10 +46,9 @@ int main() {
     inet_pton(AF_INET, server_ip.c_str(), &server_addr.sin_addr);
 
     if (!cam.isOpened()) {
-        std::cout << "Failed to make connection to cam" << std::endl;
+        std::cout << "Failed to make connection to camera" << std::endl;
         return 1;
     }
-    int imageIndex = 0;
     
     while (true) {
         try {
@@ -97,7 +96,6 @@ int main() {
             }
             delete[] buffer;
 
-            std::cout << "Message sent" << std::endl;
             // Receive response
 
             buffer = new char[4];
@@ -128,13 +126,9 @@ int main() {
             }
             delete[] buffer;
 
-            cv::pyrUp(out, out, cv::Size(out.cols * 2, out.rows * 2));
-
-            std::string fileName = "images/Capture" + std::to_string(imageIndex) + ".jpg";
-            //cv::imwrite(fileName, out);
             cv::imshow("Imge", out);
             cv::waitKey(1);
-            imageIndex++;
+
             closesocket(client_socket);
         }
         catch (const std::exception& ex) {
@@ -142,6 +136,7 @@ int main() {
         }
     }    
     cam.release();
+    cv::destroyAllWindows();
     WSACleanup();
     return 0;
 }

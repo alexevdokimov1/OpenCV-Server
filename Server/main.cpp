@@ -6,6 +6,16 @@
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/core/cuda.hpp>
+#include <opencv2/cudaimgproc.hpp>
+#include <opencv2/cudaarithm.hpp>
+#include <opencv2/cudafilters.hpp>
+#include <opencv2/cudacodec.hpp>
+#include <opencv2/cudaobjdetect.hpp>
+#include <opencv2/cudaoptflow.hpp>
+#include <opencv2/cudastereo.hpp>
+#include <opencv2/cudawarping.hpp>
+#include <opencv2/cudafeatures2d.hpp>
 
 #pragma comment(lib, "Ws2_32.lib")
 
@@ -78,8 +88,14 @@ int main() {
                 throw std::runtime_error("Accept failed: " + WSAGetLastError());
             }
 
-            std::cout << "Client connected!" << std::endl;
+            sockaddr_in* client_info = reinterpret_cast<sockaddr_in*>(&client_addr);
+            char* client_ip = inet_ntoa(client_info->sin_addr);
+            int client_port = ntohs(client_info->sin_port);
 
+            std::string client_address = std::string(client_ip) + ":" + std::to_string(client_port);
+
+            std::cout << "Client connected with " << client_address << "\n";
+            
             buffer = new char[4];
             // receive width
             result = recv(client_socket, buffer, 4, 0);
@@ -107,16 +123,25 @@ int main() {
             }
             delete[] buffer;
             
-            std::cout << "Recived " << width << "x" << height << " image with " << channels << " channels\n";
+            std::cout << "Image recived " << width << "x" << height << " image with " << channels << " channels\n";
 
             //actions
+            cv::cuda::GpuMat imgGpu;
 
-            cvtColor(in, in, cv::COLOR_RGB2GRAY);
+            imgGpu.upload(in);
+
+            cv::cuda::cvtColor(imgGpu, imgGpu, cv::COLOR_BGR2GRAY);
+
+            auto gausianFilter = cv::cuda::createGaussianFilter(CV_8UC1, CV_8UC1, { 3,3 }, 1);
+            gausianFilter->apply(imgGpu, imgGpu);
+
+            cv::Mat out;
+            imgGpu.download(out);
 
             //send
-            width = in.cols;
-            height = in.rows;
-            channels = in.channels();
+            width = out.cols;
+            height = out.rows;
+            channels = out.channels();
 
             buffer = new char[4];
             //send width
@@ -134,7 +159,7 @@ int main() {
             rowSize = width * channels * sizeof(uchar);
             buffer = new char[rowSize];
             for (int row = 0; row < height; row++) {
-                std::memcpy(buffer, in.ptr(row), rowSize);
+                std::memcpy(buffer, out.ptr(row), rowSize);
                 send(client_socket, buffer, rowSize, 0);
             }
             delete[] buffer;
