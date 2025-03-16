@@ -3,6 +3,7 @@
 #include <iostream>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <thread>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -19,19 +20,100 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 
+void clientThread(const SOCKET& server_socket, const SOCKET& client_socket) {
+    
+    std::stringstream ss;
+    ss << std::this_thread::get_id();
+    uint64_t id = std::stoull(ss.str());
+
+    std::cout << "Assigned to thread with id " << id << "\n";
+
+    int result;
+    char* buffer;
+    int width, height, channels;
+    try {
+        buffer = new char[4];
+        result = recv(client_socket, buffer, 4, 0);
+        if (result <= 0) throw std::runtime_error("Error during receiving width");
+        std::memcpy(&width, buffer, 4);
+        // receive height
+        result = recv(client_socket, buffer, 4, 0);
+        if (result <= 0) throw std::runtime_error("Error during receiving height");
+        std::memcpy(&height, buffer, 4);
+        // receive height
+        result = recv(client_socket, buffer, 4, 0);
+        if (result <= 0) throw std::runtime_error("Error during receiving channels");
+        std::memcpy(&channels, buffer, 4);
+
+        delete[] buffer;
+
+        cv::Mat in(height, width, CV_8UC(channels));
+
+        int rowSize = width * channels * sizeof(uchar);
+        buffer = new char[rowSize];
+        for (int row = 0; row < height; row++) {
+            result = recv(client_socket, buffer, rowSize, 0);
+            if (result <= 0) throw std::runtime_error("Error during receiving matrix");
+            memcpy(in.ptr(row), buffer, rowSize);
+        }
+        delete[] buffer;
+
+
+        //actions
+        cv::cuda::GpuMat imgGpu;
+
+        imgGpu.upload(in);
+
+        cv::cuda::cvtColor(imgGpu, imgGpu, cv::COLOR_BGR2GRAY);
+
+        auto gausianFilter = cv::cuda::createGaussianFilter(CV_8UC1, CV_8UC1, { 15,15 }, 0);
+        gausianFilter->apply(imgGpu, imgGpu);
+
+        cv::Mat out;
+        imgGpu.download(out);
+
+        //send
+        width = out.cols;
+        height = out.rows;
+        channels = out.channels();
+
+        buffer = new char[4];
+        //send width
+        std::memcpy(buffer, &width, 4);
+        send(client_socket, buffer, 4, 0);
+        //send height
+        std::memcpy(buffer, &height, 4);
+        send(client_socket, buffer, 4, 0);
+        //send channels
+        std::memcpy(buffer, &channels, 4);
+        send(client_socket, buffer, 4, 0);
+        //send bytes
+        delete[] buffer;
+
+        rowSize = width * channels * sizeof(uchar);
+        buffer = new char[rowSize];
+        for (int row = 0; row < height; row++) {
+            std::memcpy(buffer, out.ptr(row), rowSize);
+            send(client_socket, buffer, rowSize, 0);
+        }
+        delete[] buffer;
+    }
+    catch (const std::exception& ex) {
+        std::cout << ex.what() << "\n";
+    }
+    closesocket(client_socket);
+}
+
 int main() {
 
     std::cout << "Build " << __DATE__ << "  " << __TIME__ << "\n";
+    cv::cuda::printCudaDeviceInfo(0);
 
     WSADATA wsaData;
     SOCKET server_socket = INVALID_SOCKET;
     SOCKET client_socket = INVALID_SOCKET;
     struct sockaddr_in server_addr, client_addr;
     int client_addr_len = sizeof(client_addr);
-
-    int result;
-    char* buffer;
-    int width, height, channels;
 
     // Initialize Winsock
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -79,10 +161,10 @@ int main() {
     }
 
     while (true) {
+
         try {
             std::cout << "Waiting for connection...\n";
 
-            // Accept client connection
             client_socket = accept(server_socket, (SOCKADDR*)&client_addr, &client_addr_len);
             if (client_socket == INVALID_SOCKET) {
                 throw std::runtime_error("Accept failed: " + WSAGetLastError());
@@ -95,81 +177,14 @@ int main() {
             std::string client_address = std::string(client_ip) + ":" + std::to_string(client_port);
 
             std::cout << "Client connected with " << client_address << "\n";
-            
-            buffer = new char[4];
-            // receive width
-            result = recv(client_socket, buffer, 4, 0);
-            if (result <= 0) throw std::runtime_error("Error during receiving width");
-            std::memcpy(&width, buffer, 4);
-            // receive height
-            result = recv(client_socket, buffer, 4, 0);
-            if (result <= 0) throw std::runtime_error("Error during receiving height");
-            std::memcpy(&height, buffer, 4);
-            // receive height
-            result = recv(client_socket, buffer, 4, 0);
-            if (result <= 0) throw std::runtime_error("Error during receiving channels");
-            std::memcpy(&channels, buffer, 4);
 
-            delete[] buffer;
-
-            cv::Mat in(height, width, CV_8UC(channels));
-
-            int rowSize = width * channels * sizeof(uchar);
-            buffer = new char[rowSize];
-            for (int row = 0; row < height; row++) {
-                result = recv(client_socket, buffer, rowSize, 0);
-                if (result <= 0) throw std::runtime_error("Error during receiving matrix");
-                memcpy(in.ptr(row), buffer, rowSize);
-            }
-            delete[] buffer;
-            
-            std::cout << "Image recived " << width << "x" << height << " image with " << channels << " channels\n";
-
-            //actions
-            cv::cuda::GpuMat imgGpu;
-
-            imgGpu.upload(in);
-
-            cv::cuda::cvtColor(imgGpu, imgGpu, cv::COLOR_BGR2GRAY);
-
-            auto gausianFilter = cv::cuda::createGaussianFilter(CV_8UC1, CV_8UC1, { 3,3 }, 1);
-            gausianFilter->apply(imgGpu, imgGpu);
-
-            cv::Mat out;
-            imgGpu.download(out);
-
-            //send
-            width = out.cols;
-            height = out.rows;
-            channels = out.channels();
-
-            buffer = new char[4];
-            //send width
-            std::memcpy(buffer, &width, 4);
-            send(client_socket, buffer, 4, 0);
-            //send height
-            std::memcpy(buffer, &height, 4);
-            send(client_socket, buffer, 4, 0);
-            //send channels
-            std::memcpy(buffer, &channels, 4);
-            send(client_socket, buffer, 4, 0);
-            //send bytes
-            delete[] buffer;
-
-            rowSize = width * channels * sizeof(uchar);
-            buffer = new char[rowSize];
-            for (int row = 0; row < height; row++) {
-                std::memcpy(buffer, out.ptr(row), rowSize);
-                send(client_socket, buffer, rowSize, 0);
-            }
-            delete[] buffer;
+            std::thread th(&clientThread, server_socket, client_socket);
+            th.detach();
         }
         catch (const std::exception& ex) {
             std::cout << ex.what() << "\n";
         }
-        closesocket(client_socket);
     }
-
     // Cleanup
     closesocket(server_socket);
     WSACleanup();

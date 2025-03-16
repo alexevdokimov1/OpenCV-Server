@@ -49,9 +49,14 @@ int main() {
         std::cout << "Failed to make connection to camera" << std::endl;
         return 1;
     }
+
+    auto stamp = cv::getTickCount();
     
     while (true) {
         try {
+
+            while (1 / ((cv::getTickCount() - stamp) / cv::getTickFrequency()) > 0.5);
+            stamp = cv::getTickCount();
 
             cam >> target;
 
@@ -134,7 +139,7 @@ int main() {
         catch (const std::exception& ex) {
             std::cout << ex.what() << "\n";
         }
-    }    
+    }
     cam.release();
     cv::destroyAllWindows();
     WSACleanup();
