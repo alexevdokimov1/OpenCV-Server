@@ -20,13 +20,7 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 
-void clientThread(const SOCKET& server_socket, const SOCKET& client_socket) {
-    
-    std::stringstream ss;
-    ss << std::this_thread::get_id();
-    uint64_t id = std::stoull(ss.str());
-
-    std::cout << "Assigned to thread with id " << id << "\n";
+void clientThread(const SOCKET& client_socket) {
 
     int result;
     char* buffer;
@@ -49,25 +43,26 @@ void clientThread(const SOCKET& server_socket, const SOCKET& client_socket) {
 
         cv::Mat in(height, width, CV_8UC(channels));
 
-        int rowSize = width * channels * sizeof(uchar);
+        int rowSize = width * channels;
         buffer = new char[rowSize];
         for (int row = 0; row < height; row++) {
-            result = recv(client_socket, buffer, rowSize, 0);
-            if (result <= 0) throw std::runtime_error("Error during receiving matrix");
+            int total_read = 0;
+            while (total_read < rowSize) {
+                int bytes_read = recv(client_socket, buffer + total_read, rowSize - total_read, 0);
+                if (bytes_read <= 0) {
+                    throw std::runtime_error("Error during receiving matrix");
+                }
+                total_read += bytes_read;
+            }
             memcpy(in.ptr(row), buffer, rowSize);
         }
         delete[] buffer;
 
-
         //actions
         cv::cuda::GpuMat imgGpu;
-
         imgGpu.upload(in);
 
         cv::cuda::cvtColor(imgGpu, imgGpu, cv::COLOR_BGR2GRAY);
-
-        auto gausianFilter = cv::cuda::createGaussianFilter(CV_8UC1, CV_8UC1, { 15,15 }, 0);
-        gausianFilter->apply(imgGpu, imgGpu);
 
         cv::Mat out;
         imgGpu.download(out);
@@ -94,7 +89,14 @@ void clientThread(const SOCKET& server_socket, const SOCKET& client_socket) {
         buffer = new char[rowSize];
         for (int row = 0; row < height; row++) {
             std::memcpy(buffer, out.ptr(row), rowSize);
-            send(client_socket, buffer, rowSize, 0);
+            int total_sent = 0;
+            while (total_sent < rowSize) {
+                int bytes_sent = send(client_socket, buffer + total_sent, rowSize - total_sent, 0);
+                if (bytes_sent <= 0) {
+                    throw std::runtime_error("Error during sending matrix");
+                }
+                total_sent += bytes_sent;
+            }
         }
         delete[] buffer;
     }
@@ -178,7 +180,13 @@ int main() {
 
             std::cout << "Client connected with " << client_address << "\n";
 
-            std::thread th(&clientThread, server_socket, client_socket);
+            std::thread th(&clientThread, client_socket);
+            
+            std::stringstream ss;
+            ss << th.get_id();
+            uint64_t id = std::stoull(ss.str());
+            std::cout << "Assigned to thread with id " << id << " (detached)\n";
+
             th.detach();
         }
         catch (const std::exception& ex) {

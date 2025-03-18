@@ -55,7 +55,7 @@ int main() {
     while (true) {
         try {
 
-            while (1 / ((cv::getTickCount() - stamp) / cv::getTickFrequency()) > 0.5);
+            //while (1 / ((cv::getTickCount() - stamp) / cv::getTickFrequency()) > 60);
             stamp = cv::getTickCount();
 
             cam >> target;
@@ -93,11 +93,18 @@ int main() {
             //send bytes
             delete[] buffer;
 
-            int rowSize = width * channels * sizeof(uchar);
+            int rowSize = width * channels;
             buffer = new char[rowSize];
             for (int row = 0; row < height; row++) {
                 std::memcpy(buffer, target.ptr(row), rowSize);
-                send(client_socket, buffer, rowSize, 0);
+                int total_sent = 0;
+                while (total_sent < rowSize) {
+                    int bytes_sent = send(client_socket, buffer + total_sent, rowSize - total_sent, 0);
+                    if (bytes_sent <= 0) {
+                        throw std::runtime_error("Error during sending matrix");
+                    }
+                    total_sent += bytes_sent;
+                }
             }
             delete[] buffer;
 
@@ -121,12 +128,17 @@ int main() {
 
             cv::Mat out(height, width, CV_8UC(channels));
 
-            rowSize = width * channels * sizeof(uchar);
+            rowSize = width * channels;
             buffer = new char[rowSize];
             for (int row = 0; row < height; row++) {
-               
-                result = recv(client_socket, buffer, rowSize, 0);
-                if (result <= 0) throw std::runtime_error("Error during receiving matrix");
+                int total_read = 0;
+                while (total_read < rowSize) {
+                    int bytes_read = recv(client_socket, buffer + total_read, rowSize - total_read, 0);
+                    if (bytes_read <= 0) {
+                        throw std::runtime_error("Error during receiving matrix");
+                    }
+                    total_read += bytes_read;
+                }
                 memcpy(out.ptr(row), buffer, rowSize);
             }
             delete[] buffer;
