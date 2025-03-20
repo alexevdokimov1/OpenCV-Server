@@ -141,6 +141,17 @@ int main() {
     
     close(sock);
 
-    cv::imwrite("Out.jpg", out);
+    std::vector<int> compression_params;
+   
+    compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
+    compression_params.push_back(50);
+
+    compression_params.push_back(cv::IMWRITE_JPEG_PROGRESSIVE);
+    compression_params.push_back(1);
+
+    compression_params.push_back(cv::IMWRITE_JPEG_OPTIMIZE);
+    compression_params.push_back(1);
+
+    cv::imwrite("Out.jpg", out, compression_params);
     return 0;
 }

@@ -1,4 +1,5 @@
 #!/bin/bash
+
 sudo apt update && sudo apt upgrade
 sudo apt install -y g++ cmake make git libgtk2.0-dev pkg-config
 git clone https://github.com/opencv/opencv.git
