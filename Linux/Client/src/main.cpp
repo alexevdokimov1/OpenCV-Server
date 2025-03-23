@@ -26,7 +26,7 @@ int main() {
     }
     
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(8080);
+    serv_addr.sin_port = htons(12345);
 
     std::string server_ip;
     std::ifstream config("IP.ini");
