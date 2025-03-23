@@ -23,9 +23,9 @@ sudo apt-get update
 sudo apt-get -y install cudnn
 sudo apt-get -y install cudnn-cuda-12
 
-
-#git clone https://github.com/opencv/opencv.git
-#git clone https://github.com/opencv/opencv_contrib.git
+cd ~
+git clone https://github.com/opencv/opencv.git
+git clone https://github.com/opencv/opencv_contrib.git
 mkdir -p build && cd build
 cmake   -D CMAKE_BUILD_TYPE=RELEASE \
         -D WITH_CUDA=ON \
