@@ -8,6 +8,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <filesystem>
+
 int main() {
     int sock = 0;
     struct sockaddr_in serv_addr;
@@ -52,7 +54,7 @@ int main() {
         return -1;
     }
     
-    std::string image_path = cv::samples::findFile("test.jpg");
+    std::string image_path = cv::samples::findFile("images/input/test.jpg");
     cv::Mat img = imread(image_path, cv::IMREAD_COLOR);
  
     if(img.empty())
@@ -152,6 +154,8 @@ int main() {
     compression_params.push_back(cv::IMWRITE_JPEG_OPTIMIZE);
     compression_params.push_back(1);
 
-    cv::imwrite("Out.jpg", out, compression_params);
+    auto now = std::chrono::system_clock::now();
+
+    cv::imwrite("images/output/" + std::format("{:%Y-%m-%dT%H-%M-%S}", now) + ".jpg", out, compression_params);
     return 0;
 }

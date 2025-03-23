@@ -1,6 +1,7 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.12)
 project( Client )
 find_package( OpenCV REQUIRED )
+set (CMAKE_CXX_STANDARD 20)
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 add_executable( Client src/main.cpp )
 target_link_libraries( Client ${OpenCV_LIBS} )
