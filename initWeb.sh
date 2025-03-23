@@ -5,9 +5,3 @@ git clone https://github.com/alexevdokimov1/OpenCV-Server.git
 cd OpenCV-Server/Linux/nginx
 chmod +x install.sh
 ./install.sh
-cd ../Server
-chmod +x OpenCVInstall.sh
-./OpenCVInstall.sh
-cd build
-chmod +x launch.sh
-./launch.sh
