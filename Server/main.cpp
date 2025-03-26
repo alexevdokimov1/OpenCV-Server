@@ -22,41 +22,33 @@
 
 void clientThread(const SOCKET& client_socket) {
 
-    int result;
+    int bytes_sent, bytes_read;
     char* buffer;
-    int width, height, channels;
+    int buffer_size;
+    std::vector<uchar> image_buffer;
     try {
         buffer = new char[4];
-        result = recv(client_socket, buffer, 4, 0);
-        if (result <= 0) throw std::runtime_error("Error during receiving width");
-        std::memcpy(&width, buffer, 4);
-        // receive height
-        result = recv(client_socket, buffer, 4, 0);
-        if (result <= 0) throw std::runtime_error("Error during receiving height");
-        std::memcpy(&height, buffer, 4);
-        // receive height
-        result = recv(client_socket, buffer, 4, 0);
-        if (result <= 0) throw std::runtime_error("Error during receiving channels");
-        std::memcpy(&channels, buffer, 4);
-
+        // receive width
+        bytes_read = recv(client_socket, buffer, 4, 0);
+        if (bytes_read <= 0) throw std::runtime_error("Error during receiving buffer size");
+        std::memcpy(&buffer_size, buffer, 4);
         delete[] buffer;
 
-        cv::Mat in(height, width, CV_8UC(channels));
-
-        int rowSize = width * channels;
-        buffer = new char[rowSize];
-        for (int row = 0; row < height; row++) {
-            int total_read = 0;
-            while (total_read < rowSize) {
-                int bytes_read = recv(client_socket, buffer + total_read, rowSize - total_read, 0);
-                if (bytes_read <= 0) {
-                    throw std::runtime_error("Error during receiving matrix");
-                }
-                total_read += bytes_read;
+        image_buffer.resize(buffer_size);
+        buffer = new char[buffer_size];
+        
+        int total_read = 0;
+        while (total_read < buffer_size) {
+            bytes_read = recv(client_socket, buffer + total_read, buffer_size - total_read, 0);
+            if (bytes_read <= 0) {
+                throw std::runtime_error("Error during receiving buffer");
             }
-            memcpy(in.ptr(row), buffer, rowSize);
+            total_read += bytes_read;
         }
+        std::memcpy(image_buffer.data(), buffer, buffer_size);
         delete[] buffer;
+        
+        cv::Mat in = cv::imdecode(image_buffer, cv::IMREAD_ANYCOLOR);
 
         //actions
         cv::cuda::GpuMat imgGpu;
@@ -67,36 +59,30 @@ void clientThread(const SOCKET& client_socket) {
         cv::Mat out;
         imgGpu.download(out);
 
-        //send
-        width = out.cols;
-        height = out.rows;
-        channels = out.channels();
+        //send       
+        std::vector<int> params = { cv::IMWRITE_JPEG_QUALITY, 100, cv::IMWRITE_JPEG_OPTIMIZE, 1 };
+        bool success = cv::imencode(".jpg", out, image_buffer, params);
+        if (!success) {
+            throw std::runtime_error("Error during receiving buffer");
+        }
+
+        buffer_size = image_buffer.size();
 
         buffer = new char[4];
-        //send width
-        std::memcpy(buffer, &width, 4);
+        std::memcpy(buffer, &buffer_size, 4);
         send(client_socket, buffer, 4, 0);
-        //send height
-        std::memcpy(buffer, &height, 4);
-        send(client_socket, buffer, 4, 0);
-        //send channels
-        std::memcpy(buffer, &channels, 4);
-        send(client_socket, buffer, 4, 0);
-        //send bytes
         delete[] buffer;
 
-        rowSize = width * channels * sizeof(uchar);
-        buffer = new char[rowSize];
-        for (int row = 0; row < height; row++) {
-            std::memcpy(buffer, out.ptr(row), rowSize);
-            int total_sent = 0;
-            while (total_sent < rowSize) {
-                int bytes_sent = send(client_socket, buffer + total_sent, rowSize - total_sent, 0);
-                if (bytes_sent <= 0) {
-                    throw std::runtime_error("Error during sending matrix");
-                }
-                total_sent += bytes_sent;
+        buffer = new char[buffer_size];
+        std::copy(image_buffer.begin(), image_buffer.end(), buffer);
+
+        int total_sent = 0;
+        while (total_sent < buffer_size) {
+            bytes_sent = send(client_socket, buffer + total_sent, buffer_size - total_sent, 0);
+            if (bytes_sent <= 0) {
+                throw std::runtime_error("Error during sending buffer");
             }
+            total_sent += bytes_sent;
         }
         delete[] buffer;
     }
@@ -144,7 +130,7 @@ int main() {
     // Setup server address
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(8080);
+    server_addr.sin_port = htons(12345);
 
     // Bind socket
     if (bind(server_socket, (SOCKADDR*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {

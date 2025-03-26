@@ -1,7 +1,7 @@
 #!/bin/bash
 
-mkdir build && cd build
+mkdir -p build && cd build
 cmake ..
 make
 chmod +x Server
-./Server
+./Server &
