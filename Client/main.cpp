@@ -65,8 +65,6 @@ int main() {
 
             int buffer_size = image_buffer.size();
 
-            std::cout << buffer_size << " bytes send\n";
-
             // Create socket
             client_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
             if (client_socket == INVALID_SOCKET) {
